@@ -1,10 +1,5 @@
 
-import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { 
-  Video, Play, Square, Upload, RefreshCw, Layers, 
-  Settings as SettingsIcon, Zap, Download, Trash2, 
-  Clock, CheckCircle2, AlertCircle, Loader2
-} from 'lucide-react';
+import React, { useState, useRef, useCallback } from 'react';
 import { AppState, Trigger, Highlight, Settings, Rect, RGB } from './types';
 import { getAverageColor, getDistance, rgbToHex } from './services/colorUtils';
 
@@ -39,7 +34,19 @@ const App: React.FC = () => {
   const scanIntervalRef = useRef<number | null>(null);
   const lastMatchTimeRef = useRef<number>(0);
 
-  // Reset
+  // Helper to wait for seek accurately
+  const waitForSeek = (video: HTMLVideoElement, time: number) => {
+    return new Promise<void>((resolve) => {
+      const onSeeked = () => {
+        video.removeEventListener('seeked', onSeeked);
+        // Small delay to ensure the graphics buffer is swapped for the new frame
+        requestAnimationFrame(() => setTimeout(resolve, 60));
+      };
+      video.addEventListener('seeked', onSeeked);
+      video.currentTime = time;
+    });
+  };
+
   const handleReset = useCallback(() => {
     setHighlights([]);
     setTriggers([]);
@@ -54,17 +61,16 @@ const App: React.FC = () => {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (videoUrl) URL.revokeObjectURL(videoUrl);
       handleReset();
       setVideoUrl(URL.createObjectURL(file));
     }
   };
 
-  // Drawing & Triggers
   const handleRectangleDrawn = (rect: Rect) => {
     if (!videoRef.current) return;
     const video = videoRef.current;
     
-    // Create a canvas to sample color from the current frame
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -73,7 +79,6 @@ const App: React.FC = () => {
 
     ctx.drawImage(video, 0, 0);
 
-    // Map display rect to video source rect
     const videoRect = video.getBoundingClientRect();
     const scaleX = video.videoWidth / videoRect.width;
     const scaleY = video.videoHeight / videoRect.height;
@@ -107,15 +112,9 @@ const App: React.FC = () => {
     setPendingColor(null);
   };
 
-  const deleteTrigger = (id: string) => {
-    setTriggers(prev => prev.filter(t => t.id !== id));
-  };
+  const deleteTrigger = (id: string) => setTriggers(prev => prev.filter(t => t.id !== id));
+  const deleteHighlight = (id: string) => setHighlights(prev => prev.filter(h => h.id !== id));
 
-  const deleteHighlight = (id: string) => {
-    setHighlights(prev => prev.filter(h => h.id !== id));
-  };
-
-  // Scanning Logic
   const startScan = () => {
     if (!videoRef.current || triggers.length === 0) return;
     setAppState('SCANNING');
@@ -127,13 +126,14 @@ const App: React.FC = () => {
     const canvas = document.createElement('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
 
     const videoRect = video.getBoundingClientRect();
     const scaleX = video.videoWidth / videoRect.width;
     const scaleY = video.videoHeight / videoRect.height;
 
+    // Faster interval (150ms) to ensure we don't miss quick color flashes
     scanIntervalRef.current = window.setInterval(() => {
       if (video.ended) {
         stopScan();
@@ -143,7 +143,6 @@ const App: React.FC = () => {
       ctx.drawImage(video, 0, 0);
       setProgress((video.currentTime / video.duration) * 100);
 
-      // Check each trigger
       for (const trigger of triggers) {
         const sourceX = trigger.rect.x * scaleX;
         const sourceY = trigger.rect.y * scaleY;
@@ -154,14 +153,14 @@ const App: React.FC = () => {
         const distance = getDistance(currentColor, trigger.color);
 
         if (distance < trigger.tolerance) {
-          // Cooldown 10 seconds
+          // Cooldown to avoid multiple highlights for the same event
           if (video.currentTime - lastMatchTimeRef.current > 10) {
             addHighlight(video, trigger, canvas);
             lastMatchTimeRef.current = video.currentTime;
           }
         }
       }
-    }, 500);
+    }, 150);
   };
 
   const stopScan = () => {
@@ -181,7 +180,6 @@ const App: React.FC = () => {
     const eventTime = video.currentTime;
     const startTime = Math.max(0, eventTime - settings.preRoll);
     
-    // Generate thumbnail
     const thumbCanvas = document.createElement('canvas');
     thumbCanvas.width = 160;
     thumbCanvas.height = 90;
@@ -190,107 +188,111 @@ const App: React.FC = () => {
       thumbCtx.drawImage(canvas, 0, 0, thumbCanvas.width, thumbCanvas.height);
     }
 
-    const newHighlight: Highlight = {
+    setHighlights(prev => [...prev, {
       id: crypto.randomUUID(),
       time: startTime,
       eventTime,
       type: trigger.label,
-      thumbnail: thumbCanvas.toDataURL('image/jpeg', 0.7)
-    };
-    setHighlights(prev => [...prev, newHighlight]);
+      thumbnail: thumbCanvas.toDataURL('image/jpeg', 0.8)
+    }]);
   };
 
-  // Export Logic
   const startExport = async () => {
     if (!videoRef.current || highlights.length === 0) return;
+    
+    const video = videoRef.current;
+    const originalRate = video.playbackRate;
+    const originalMuted = video.muted;
+    const originalTime = video.currentTime;
+
     setAppState('EXPORTING');
     setExportProgress(0);
 
-    const video = videoRef.current;
     const exportCanvas = document.createElement('canvas');
     exportCanvas.width = video.videoWidth;
     exportCanvas.height = video.videoHeight;
-    const ctx = exportCanvas.getContext('2d')!;
+    const ctx = exportCanvas.getContext('2d', { alpha: false })!;
 
-    // MediaRecorder setup
-    const stream = exportCanvas.captureStream(60);
+    // Native resolution WebM at 30 FPS
+    const stream = exportCanvas.captureStream(30);
     
-    // Attempt to get audio stream
     try {
-      const audioStream = (video as any).captureStream ? (video as any).captureStream() : null;
-      if (audioStream && audioStream.getAudioTracks().length > 0) {
-        stream.addTrack(audioStream.getAudioTracks()[0]);
+      const videoStream = (video as any).captureStream ? (video as any).captureStream() : (video as any).mozCaptureStream ? (video as any).mozCaptureStream() : null;
+      if (videoStream && videoStream.getAudioTracks().length > 0) {
+        stream.addTrack(videoStream.getAudioTracks()[0]);
       }
-    } catch(e) { console.warn("Audio capture not supported", e); }
+    } catch(e) { console.warn("Audio track capture failed", e); }
 
-    const options = { mimeType: 'video/webm;codecs=vp9,opus', videoBitsPerSecond: 10000000 };
-    let recorder: MediaRecorder;
-    try {
-       recorder = new MediaRecorder(stream, options);
-    } catch (e) {
-       recorder = new MediaRecorder(stream, { mimeType: 'video/webm', videoBitsPerSecond: 10000000 });
-    }
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
+      ? 'video/webm;codecs=vp9,opus' 
+      : 'video/webm';
+    
+    const recorder = new MediaRecorder(stream, { 
+      mimeType, 
+      videoBitsPerSecond: 15000000 // High bitrate for native quality
+    });
     
     const chunks: Blob[] = [];
-    recorder.ondataavailable = (e) => chunks.push(e.data);
-    recorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: 'video/webm' });
-      
-      // Fix duration if library available
-      if ((window as any).ysFixWebmDuration) {
-        (window as any).ysFixWebmDuration(blob, 0, (fixedBlob: Blob) => {
-           downloadBlob(fixedBlob);
-        });
-      } else {
-        downloadBlob(blob);
-      }
-      setAppState('IDLE');
-    };
+    recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
+    
+    const exportPromise = new Promise<void>((resolve) => {
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: 'video/webm' });
+        if ((window as any).ysFixWebmDuration) {
+          (window as any).ysFixWebmDuration(blob, 0, (fixedBlob: Blob) => {
+             const url = URL.createObjectURL(fixedBlob);
+             const a = document.createElement('a');
+             a.href = url;
+             a.download = `cricket_highlights_pro_${Date.now()}.webm`;
+             a.click();
+             resolve();
+          });
+        } else {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `cricket_highlights_pro_${Date.now()}.webm`;
+          a.click();
+          resolve();
+        }
+      };
+    });
 
     recorder.start();
+    video.muted = true;
+    video.playbackRate = 1.0;
 
-    // Stitching logic
     const sortedHighlights = [...highlights].sort((a, b) => a.time - b.time);
-    const duration = settings.clipDuration;
-    
+    const clipDuration = settings.clipDuration;
     let lastFrame: ImageBitmap | null = null;
 
     for (let i = 0; i < sortedHighlights.length; i++) {
       const highlight = sortedHighlights[i];
-      video.currentTime = highlight.time;
-      
-      // Wait for seek
-      await new Promise(resolve => {
-        const handler = () => {
-          video.removeEventListener('seeked', handler);
-          resolve(null);
-        };
-        video.addEventListener('seeked', handler);
-      });
+      await waitForSeek(video, highlight.time);
 
-      const startTime = Date.now();
-      const endTime = startTime + duration * 1000;
-      const transitionDuration = 600;
+      const startTime = video.currentTime;
+      const endTime = Math.min(video.duration, startTime + clipDuration);
+      const transitionDuration = 0.6; // Transition speed in seconds
 
-      while (Date.now() < endTime) {
-        const elapsed = Date.now() - startTime;
+      video.play();
+
+      while (video.currentTime < endTime && !video.ended) {
+        const currentRelative = video.currentTime - startTime;
         
-        // Transition effect (Wipe)
-        if (i > 0 && elapsed < transitionDuration && lastFrame) {
-          const t = elapsed / transitionDuration;
+        // Wipe logic
+        if (i > 0 && currentRelative < transitionDuration && lastFrame) {
+          const t = currentRelative / transitionDuration;
           ctx.drawImage(lastFrame, 0, 0);
-          
-          // Wipe from left
           ctx.save();
           ctx.beginPath();
           ctx.rect(0, 0, exportCanvas.width * t, exportCanvas.height);
           ctx.clip();
           ctx.drawImage(video, 0, 0);
           
-          // Glow line
+          // Emerald line effect
           ctx.strokeStyle = '#10b981';
-          ctx.lineWidth = 10;
-          ctx.shadowBlur = 15;
+          ctx.lineWidth = 12;
+          ctx.shadowBlur = 20;
           ctx.shadowColor = '#10b981';
           ctx.beginPath();
           ctx.moveTo(exportCanvas.width * t, 0);
@@ -301,24 +303,23 @@ const App: React.FC = () => {
           ctx.drawImage(video, 0, 0);
         }
 
-        setExportProgress(((i + (elapsed / (duration * 1000))) / sortedHighlights.length) * 100);
+        setExportProgress(((i + (currentRelative / clipDuration)) / sortedHighlights.length) * 100);
         await new Promise(r => requestAnimationFrame(r));
       }
 
-      // Capture last frame for next transition
+      video.pause();
+      if (lastFrame) lastFrame.close();
       lastFrame = await createImageBitmap(video);
     }
 
     recorder.stop();
-  };
+    await exportPromise;
 
-  const downloadBlob = (blob: Blob) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'cricket_highlights.webm';
-    a.click();
-    URL.revokeObjectURL(url);
+    // Cleanup and Restore
+    video.muted = originalMuted;
+    video.playbackRate = originalRate;
+    video.currentTime = originalTime;
+    setAppState('IDLE');
   };
 
   return (
@@ -333,9 +334,7 @@ const App: React.FC = () => {
         onReset={handleReset}
         canScan={triggers.length > 0}
       />
-
       <main className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar - Highlights */}
         <HighlightsSidebar 
           highlights={highlights}
           onJump={(time) => { if(videoRef.current) videoRef.current.currentTime = time; }}
@@ -343,16 +342,12 @@ const App: React.FC = () => {
           onExport={startExport}
           isExporting={appState === 'EXPORTING'}
         />
-
-        {/* Center - Video Stage */}
         <VideoStage 
           videoUrl={videoUrl}
           videoRef={videoRef}
           triggers={triggers}
           onRectDrawn={handleRectangleDrawn}
         />
-
-        {/* Right Sidebar - Config */}
         <ConfigSidebar 
           settings={settings}
           setSettings={setSettings}
@@ -360,8 +355,6 @@ const App: React.FC = () => {
           onDeleteTrigger={deleteTrigger}
         />
       </main>
-
-      {/* Overlays/Modals */}
       {showModal && pendingColor && (
         <NewTriggerModal 
           color={pendingColor}
@@ -369,10 +362,7 @@ const App: React.FC = () => {
           onCancel={() => { setShowModal(false); setPendingRect(null); }}
         />
       )}
-
-      {appState === 'EXPORTING' && (
-        <ExportOverlay progress={exportProgress} />
-      )}
+      {appState === 'EXPORTING' && <ExportOverlay progress={exportProgress} />}
     </div>
   );
 };

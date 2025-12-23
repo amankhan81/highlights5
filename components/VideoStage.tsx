@@ -1,6 +1,5 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-/* Add Video and Zap to the imports */
+import React, { useState, useRef } from 'react';
 import { MousePointer2, Info, Maximize2, Video, Zap } from 'lucide-react';
 import { Trigger, Rect } from '../types';
 
@@ -84,8 +83,12 @@ const VideoStage: React.FC<Props> = ({ videoUrl, videoRef, triggers, onRectDrawn
             <video 
               ref={videoRef}
               src={videoUrl}
-              className="w-full h-full pointer-events-none"
-              controls={false}
+              className="w-full h-full"
+              controls
+              playsInline
+              crossOrigin="anonymous"
+              preload="auto"
+              style={{ pointerEvents: isDrawing ? 'none' : 'auto' }}
             />
 
             {/* Triggers Overlay */}
@@ -120,27 +123,14 @@ const VideoStage: React.FC<Props> = ({ videoUrl, videoRef, triggers, onRectDrawn
               />
             )}
 
-            {/* Controls HUD */}
-            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 px-6 py-3 glass rounded-2xl border border-white/20 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-4 group-hover:translate-y-0 flex items-center gap-4">
+            {/* Controls HUD Helper */}
+            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 px-6 py-3 glass rounded-2xl border border-white/20 opacity-0 group-hover:opacity-100 transition-all duration-500 translate-y-4 group-hover:translate-y-0 flex items-center gap-4 pointer-events-none">
                <div className="flex items-center gap-2 text-xs font-medium text-slate-300">
                  <MousePointer2 className="w-4 h-4 text-emerald-400" />
-                 Drag to create trigger
+                 Drag anywhere to create trigger
                </div>
-               <div className="h-4 w-px bg-white/10" />
-               <button onClick={() => videoRef.current?.requestFullscreen()} className="text-slate-400 hover:text-white">
-                 <Maximize2 className="w-4 h-4" />
-               </button>
             </div>
           </div>
-
-          {triggers.length === 0 && (
-            <div className="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 px-6 py-4 rounded-2xl animate-pulse">
-               <Zap className="w-5 h-5 text-emerald-400" />
-               <p className="text-sm font-medium text-emerald-300">
-                 Pro Tip: Pause on a boundary/wicket score change & draw a box over the score area.
-               </p>
-            </div>
-          )}
         </div>
       )}
     </div>
