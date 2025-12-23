@@ -6,7 +6,7 @@
     <title>CricketScan AI – Pro</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/fix-webm-duration@1.0.5/fix-webm-duration.min.js"></script>
-    <!-- Babel Standalone for browser-side transpilation of TSX -->
+    <!-- Babel Standalone for browser-side transpilation -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -21,18 +21,16 @@
         backdrop-filter: blur(12px);
         border: 1px solid rgba(255, 255, 255, 0.1);
       }
-      ::-webkit-scrollbar {
-        width: 6px;
-      }
-      ::-webkit-scrollbar-track {
-        background: rgba(0, 0, 0, 0.1);
-      }
-      ::-webkit-scrollbar-thumb {
-        background: rgba(16, 185, 129, 0.3);
-        border-radius: 3px;
-      }
-      ::-webkit-scrollbar-thumb:hover {
-        background: rgba(16, 185, 129, 0.5);
+      .protocol-warning {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        background: #020617;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 2rem;
       }
     </style>
 <script type="importmap">
@@ -48,8 +46,48 @@
 </script>
 </head>
 <body>
-    <div id="root"></div>
-    <!-- Babel processes this as an entry point and transpiles imported .tsx files -->
-    <script type="text/babel" data-type="module" data-presets="react,typescript" src="./index.tsx"></script>
+    <div id="root">
+      <div class="flex items-center justify-center h-screen flex-col gap-4">
+        <div class="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+        <p class="text-slate-400 font-medium animate-pulse">Initializing AI Scanning Engine...</p>
+      </div>
+    </div>
+
+    <!-- Protocol Check -->
+    <script>
+      if (window.location.protocol === 'file:') {
+        document.getElementById('root').innerHTML = `
+          <div class="protocol-warning">
+            <div class="max-w-md p-8 glass rounded-3xl border-red-500/30">
+              <h2 class="text-2xl font-bold text-red-400 mb-4">Security Block Detected</h2>
+              <p class="text-slate-300 mb-6">Browsers block video processing when opening files directly (file://). To use CricketScan Pro, you must run it through a local server.</p>
+              <div class="bg-black/40 p-4 rounded-xl text-left text-xs font-mono text-emerald-400">
+                # How to fix:<br>
+                1. Open the folder in VS Code<br>
+                2. Install "Live Server" extension<br>
+                3. Click "Go Live" at bottom right
+              </div>
+            </div>
+          </div>
+        `;
+      }
+    </script>
+
+    <!-- Entry Point: Inlined index.tsx for GitHub Pages stability -->
+    <script type="text/babel" data-type="module" data-presets="react,typescript">
+      import React from 'react';
+      import ReactDOM from 'react-dom/client';
+      import App from './App.tsx';
+
+      const rootElement = document.getElementById('root');
+      if (rootElement) {
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(
+          <React.StrictMode>
+            <App />
+          </React.StrictMode>
+        );
+      }
+    </script>
 </body>
 </html>

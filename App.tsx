@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { AppState, Trigger, Highlight, Settings, Rect, RGB } from './types.ts';
 import { getAverageColor, getDistance, rgbToHex } from './services/colorUtils.ts';
 
@@ -10,7 +10,6 @@ import NewTriggerModal from './components/NewTriggerModal.tsx';
 import ExportOverlay from './components/ExportOverlay.tsx';
 
 const App: React.FC = () => {
-  // Global State
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [appState, setAppState] = useState<AppState>('IDLE');
   const [progress, setProgress] = useState(0);
@@ -22,27 +21,23 @@ const App: React.FC = () => {
     clipDuration: 10
   });
 
-  // UI State
   const [pendingRect, setPendingRect] = useState<Rect | null>(null);
   const [pendingColor, setPendingColor] = useState<RGB | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [exportProgress, setExportProgress] = useState(0);
 
-  // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
   const scanIntervalRef = useRef<number | null>(null);
   const lastMatchTimeRef = useRef<number>(0);
 
-  // Robust seek waiter
   const waitForSeek = (video: HTMLVideoElement, time: number) => {
     return new Promise<void>((resolve) => {
       const onSeeked = () => {
         video.removeEventListener('seeked', onSeeked);
-        // Ensure browser has swapped the frame in the buffer
         if ('requestVideoFrameCallback' in video) {
           (video as any).requestVideoFrameCallback(() => resolve());
         } else {
-          setTimeout(resolve, 100);
+          setTimeout(resolve, 150);
         }
       };
       video.addEventListener('seeked', onSeeked);
@@ -137,7 +132,6 @@ const App: React.FC = () => {
     const scaleX = video.videoWidth / videoRect.width;
     const scaleY = video.videoHeight / videoRect.height;
 
-    // Faster 100ms interval to catch every quick score change
     scanIntervalRef.current = window.setInterval(() => {
       if (video.ended) {
         stopScan();
@@ -216,7 +210,6 @@ const App: React.FC = () => {
     exportCanvas.height = video.videoHeight;
     const ctx = exportCanvas.getContext('2d', { alpha: false })!;
 
-    // MediaRecorder set to 30 FPS for smooth output
     const stream = exportCanvas.captureStream(30);
     
     try {
@@ -324,7 +317,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen text-slate-100 overflow-hidden">
+    <div className="flex flex-col h-screen text-slate-100 overflow-hidden bg-[#020617]">
       <HeaderBar 
         appState={appState}
         progress={progress}
