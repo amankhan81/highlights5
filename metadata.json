@@ -1,0 +1,5 @@
+{
+  "name": "CricketScan AI – Pro",
+  "description": "Professional cricket highlight generation tool using color-based scoreboard trigger detection.",
+  "requestFramePermissions": []
+}
