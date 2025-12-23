@@ -1,5 +1,4 @@
-
-import { RGB } from '../types';
+import { RGB } from '../types.ts';
 
 export const getAverageColor = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): RGB => {
   const imageData = ctx.getImageData(x, y, w, h);

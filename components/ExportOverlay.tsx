@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Loader2, Download, Zap, Film } from 'lucide-react';
 
@@ -42,7 +41,7 @@ const ExportOverlay: React.FC<Props> = ({ progress }) => {
         <div className="flex items-center justify-center gap-4 text-[10px] font-bold tracking-widest uppercase">
           <div className="bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 text-slate-400">Native Resolution</div>
           <div className="bg-white/5 px-3 py-1.5 rounded-lg border border-white/10 text-slate-400">WebM VP9</div>
-          <div className="bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 text-emerald-500">60 FPS</div>
+          <div className="bg-emerald-500/10 px-3 py-1.5 rounded-lg border border-emerald-500/20 text-emerald-500">30 FPS</div>
         </div>
       </div>
     </div>

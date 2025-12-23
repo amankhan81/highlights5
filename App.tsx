@@ -1,14 +1,13 @@
-
 import React, { useState, useRef, useCallback } from 'react';
-import { AppState, Trigger, Highlight, Settings, Rect, RGB } from './types';
-import { getAverageColor, getDistance, rgbToHex } from './services/colorUtils';
+import { AppState, Trigger, Highlight, Settings, Rect, RGB } from './types.ts';
+import { getAverageColor, getDistance, rgbToHex } from './services/colorUtils.ts';
 
-import HeaderBar from './components/HeaderBar';
-import HighlightsSidebar from './components/HighlightsSidebar';
-import VideoStage from './components/VideoStage';
-import ConfigSidebar from './components/ConfigSidebar';
-import NewTriggerModal from './components/NewTriggerModal';
-import ExportOverlay from './components/ExportOverlay';
+import HeaderBar from './components/HeaderBar.tsx';
+import HighlightsSidebar from './components/HighlightsSidebar.tsx';
+import VideoStage from './components/VideoStage.tsx';
+import ConfigSidebar from './components/ConfigSidebar.tsx';
+import NewTriggerModal from './components/NewTriggerModal.tsx';
+import ExportOverlay from './components/ExportOverlay.tsx';
 
 const App: React.FC = () => {
   // Global State
@@ -34,13 +33,17 @@ const App: React.FC = () => {
   const scanIntervalRef = useRef<number | null>(null);
   const lastMatchTimeRef = useRef<number>(0);
 
-  // Helper to wait for seek accurately
+  // Robust seek waiter
   const waitForSeek = (video: HTMLVideoElement, time: number) => {
     return new Promise<void>((resolve) => {
       const onSeeked = () => {
         video.removeEventListener('seeked', onSeeked);
-        // Small delay to ensure the graphics buffer is swapped for the new frame
-        requestAnimationFrame(() => setTimeout(resolve, 60));
+        // Ensure browser has swapped the frame in the buffer
+        if ('requestVideoFrameCallback' in video) {
+          (video as any).requestVideoFrameCallback(() => resolve());
+        } else {
+          setTimeout(resolve, 100);
+        }
       };
       video.addEventListener('seeked', onSeeked);
       video.currentTime = time;
@@ -51,6 +54,7 @@ const App: React.FC = () => {
     setHighlights([]);
     setTriggers([]);
     setProgress(0);
+    lastMatchTimeRef.current = 0;
     if (videoRef.current) {
       videoRef.current.currentTime = 0;
       videoRef.current.playbackRate = 1;
@@ -133,7 +137,7 @@ const App: React.FC = () => {
     const scaleX = video.videoWidth / videoRect.width;
     const scaleY = video.videoHeight / videoRect.height;
 
-    // Faster interval (150ms) to ensure we don't miss quick color flashes
+    // Faster 100ms interval to catch every quick score change
     scanIntervalRef.current = window.setInterval(() => {
       if (video.ended) {
         stopScan();
@@ -153,14 +157,13 @@ const App: React.FC = () => {
         const distance = getDistance(currentColor, trigger.color);
 
         if (distance < trigger.tolerance) {
-          // Cooldown to avoid multiple highlights for the same event
           if (video.currentTime - lastMatchTimeRef.current > 10) {
             addHighlight(video, trigger, canvas);
             lastMatchTimeRef.current = video.currentTime;
           }
         }
       }
-    }, 150);
+    }, 100); 
   };
 
   const stopScan = () => {
@@ -213,7 +216,7 @@ const App: React.FC = () => {
     exportCanvas.height = video.videoHeight;
     const ctx = exportCanvas.getContext('2d', { alpha: false })!;
 
-    // Native resolution WebM at 30 FPS
+    // MediaRecorder set to 30 FPS for smooth output
     const stream = exportCanvas.captureStream(30);
     
     try {
@@ -221,7 +224,7 @@ const App: React.FC = () => {
       if (videoStream && videoStream.getAudioTracks().length > 0) {
         stream.addTrack(videoStream.getAudioTracks()[0]);
       }
-    } catch(e) { console.warn("Audio track capture failed", e); }
+    } catch(e) { console.warn("Audio capture failed", e); }
 
     const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9,opus') 
       ? 'video/webm;codecs=vp9,opus' 
@@ -229,21 +232,23 @@ const App: React.FC = () => {
     
     const recorder = new MediaRecorder(stream, { 
       mimeType, 
-      videoBitsPerSecond: 15000000 // High bitrate for native quality
+      videoBitsPerSecond: 12000000 
     });
     
     const chunks: Blob[] = [];
     recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data); };
     
+    const totalDurationMs = highlights.length * settings.clipDuration * 1000;
+
     const exportPromise = new Promise<void>((resolve) => {
       recorder.onstop = () => {
         const blob = new Blob(chunks, { type: 'video/webm' });
         if ((window as any).ysFixWebmDuration) {
-          (window as any).ysFixWebmDuration(blob, 0, (fixedBlob: Blob) => {
+          (window as any).ysFixWebmDuration(blob, totalDurationMs, (fixedBlob: Blob) => {
              const url = URL.createObjectURL(fixedBlob);
              const a = document.createElement('a');
              a.href = url;
-             a.download = `cricket_highlights_pro_${Date.now()}.webm`;
+             a.download = `cricket_highlights_${Date.now()}.webm`;
              a.click();
              resolve();
           });
@@ -251,7 +256,7 @@ const App: React.FC = () => {
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `cricket_highlights_pro_${Date.now()}.webm`;
+          a.download = `cricket_highlights_${Date.now()}.webm`;
           a.click();
           resolve();
         }
@@ -272,14 +277,13 @@ const App: React.FC = () => {
 
       const startTime = video.currentTime;
       const endTime = Math.min(video.duration, startTime + clipDuration);
-      const transitionDuration = 0.6; // Transition speed in seconds
+      const transitionDuration = 0.6;
 
       video.play();
 
       while (video.currentTime < endTime && !video.ended) {
         const currentRelative = video.currentTime - startTime;
         
-        // Wipe logic
         if (i > 0 && currentRelative < transitionDuration && lastFrame) {
           const t = currentRelative / transitionDuration;
           ctx.drawImage(lastFrame, 0, 0);
@@ -288,11 +292,9 @@ const App: React.FC = () => {
           ctx.rect(0, 0, exportCanvas.width * t, exportCanvas.height);
           ctx.clip();
           ctx.drawImage(video, 0, 0);
-          
-          // Emerald line effect
           ctx.strokeStyle = '#10b981';
-          ctx.lineWidth = 12;
-          ctx.shadowBlur = 20;
+          ctx.lineWidth = 10;
+          ctx.shadowBlur = 15;
           ctx.shadowColor = '#10b981';
           ctx.beginPath();
           ctx.moveTo(exportCanvas.width * t, 0);
@@ -315,7 +317,6 @@ const App: React.FC = () => {
     recorder.stop();
     await exportPromise;
 
-    // Cleanup and Restore
     video.muted = originalMuted;
     video.playbackRate = originalRate;
     video.currentTime = originalTime;

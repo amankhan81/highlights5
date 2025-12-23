@@ -1,7 +1,6 @@
-
 import React, { useState } from 'react';
-import { RGB } from '../types';
-import { rgbToHex } from '../services/colorUtils';
+import { RGB } from '../types.ts';
+import { rgbToHex } from '../services/colorUtils.ts';
 import { Zap, Check, X } from 'lucide-react';
 
 interface Props {

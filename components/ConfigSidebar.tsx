@@ -1,8 +1,7 @@
-
 import React from 'react';
-import { Settings as SettingsIcon, Zap, Trash2, SlidersHorizontal } from 'lucide-react';
-import { Settings, Trigger } from '../types';
-import { rgbToHex } from '../services/colorUtils';
+import { Settings as SettingsIcon, Zap, Trash2 } from 'lucide-react';
+import { Settings, Trigger } from '../types.ts';
+import { rgbToHex } from '../services/colorUtils.ts';
 
 interface Props {
   settings: Settings;

@@ -1,6 +1,5 @@
-
 import React, { useState, useRef } from 'react';
-import { MousePointer2, Info, Maximize2, Video, Zap } from 'lucide-react';
+import { MousePointer2, Info, Maximize2, Video } from 'lucide-react';
 import { Trigger, Rect } from '../types';
 
 interface Props {
@@ -63,16 +62,16 @@ const VideoStage: React.FC<Props> = ({ videoUrl, videoRef, triggers, onRectDrawn
           <div className="grid grid-cols-2 gap-4 text-left">
              <div className="bg-white/5 p-3 rounded-xl border border-white/5">
                 <div className="text-emerald-400 font-bold text-xs mb-1">STEP 1</div>
-                <div className="text-[10px] text-slate-300">Upload high quality MP4/WebM match source.</div>
+                <div className="text-[10px] text-slate-300">Upload high quality match source.</div>
              </div>
              <div className="bg-white/5 p-3 rounded-xl border border-white/5">
                 <div className="text-emerald-400 font-bold text-xs mb-1">STEP 2</div>
-                <div className="text-[10px] text-slate-300">Draw boxes on scoreboard score updates.</div>
+                <div className="text-[10px] text-slate-300">Draw boxes on scoreboard regions.</div>
              </div>
           </div>
         </div>
       ) : (
-        <div className="w-full h-full flex flex-col items-center justify-center space-y-6">
+        <div className="w-full h-full flex flex-col items-center justify-center">
           <div 
             ref={containerRef}
             className="relative w-full max-w-6xl aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-white/10 select-none group"
